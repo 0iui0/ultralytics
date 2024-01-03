@@ -83,7 +83,7 @@ def verify_image(args):
 
 def verify_image_label(args):
     """Verify one image-label pair."""
-    im_file, lb_file, prefix, keypoint, num_cls, nkpt, ndim = args
+    im_file, lb_file, prefix, use_keypoints, use_segments, num_cls, nkpt, ndim = args
     # Number (missing, found, empty, corrupt), message, segments, keypoints
     nm, nf, ne, nc, msg, segments, keypoints = 0, 0, 0, 0, '', [], None
     try:
@@ -106,26 +106,30 @@ def verify_image_label(args):
             nf = 1  # label found
             with open(lb_file) as f:
                 lb = [x.split() for x in f.read().strip().splitlines() if len(x)]
-                if any(len(x) > 6 for x in lb) and (not keypoint):  # is segment
+                if use_segments and use_keypoints:
+                    segments = [np.array(x[5 + nkpt * ndim:], dtype=np.float32).reshape(-1, 2) for x in lb]  # (cls, xy1...)
+                    lb = [x[:5 + nkpt * ndim] for x in lb]
+                elif any(len(x) > 6 for x in lb) and use_segments:  # is segment
                     classes = np.array([x[0] for x in lb], dtype=np.float32)
                     segments = [np.array(x[1:], dtype=np.float32).reshape(-1, 2) for x in lb]  # (cls, xy1...)
                     lb = np.concatenate((classes.reshape(-1, 1), segments2boxes(segments)), 1)  # (cls, xywh)
                 lb = np.array(lb, dtype=np.float32)
             nl = len(lb)
             if nl:
-                if keypoint:
+                # lb has shape (nl, 5) if detection or segmentation model or (nl, 5 + nkpt * ndim) if mult-task or keypoints model
+                if use_keypoints:  # mult-task or keypoints model
                     assert lb.shape[1] == (5 + nkpt * ndim), f'labels require {(5 + nkpt * ndim)} columns each'
                     points = lb[:, 5:].reshape(-1, ndim)[:, :2]
-                else:
+                else:  # detection or segmentation model
                     assert lb.shape[1] == 5, f'labels require 5 columns, {lb.shape[1]} columns detected'
                     points = lb[:, 1:]
                 assert points.max() <= 1, f'non-normalized or out of bounds coordinates {points[points > 1]}'
                 assert lb.min() >= 0, f'negative label values {lb[lb < 0]}'
 
                 # All labels
-                max_cls = lb[:, 0].max()  # max label count
+                max_cls = int(lb[:, 0].max())  # max label count
                 assert max_cls <= num_cls, \
-                    f'Label class {int(max_cls)} exceeds dataset class count {num_cls}. ' \
+                    f'Label class {max_cls} exceeds dataset class count {num_cls}. ' \
                     f'Possible class labels are 0-{num_cls - 1}'
                 _, i = np.unique(lb, axis=0, return_index=True)
                 if len(i) < nl:  # duplicate row check
@@ -135,11 +139,11 @@ def verify_image_label(args):
                     msg = f'{prefix}WARNING ⚠️ {im_file}: {nl - len(i)} duplicate labels removed'
             else:
                 ne = 1  # label empty
-                lb = np.zeros((0, (5 + nkpt * ndim) if keypoint else 5), dtype=np.float32)
+                lb = np.zeros((0, (5 + nkpt * ndim) if use_keypoints else 5), dtype=np.float32)
         else:
             nm = 1  # label missing
-            lb = np.zeros((0, (5 + nkpt * ndim) if keypoints else 5), dtype=np.float32)
-        if keypoint:
+            lb = np.zeros((0, (5 + nkpt * ndim) if use_keypoints else 5), dtype=np.float32)
+        if use_keypoints:
             keypoints = lb[:, 5:].reshape(-1, nkpt, ndim)
             if ndim == 2:
                 kpt_mask = np.where((keypoints[..., 0] < 0) | (keypoints[..., 1] < 0), 0.0, 1.0).astype(np.float32)
@@ -518,8 +522,8 @@ class HUBDatasetStats:
 
                 dataset = YOLODataset(img_path=self.data[split],
                                       data=self.data,
-                                      use_segments=self.task == 'segment',
-                                      use_keypoints=self.task == 'pose')
+                                      use_segments=self.task in ['segment', 'multi-task'],
+                                      use_keypoints=self.task in ['pose', 'multi-task'])
                 x = np.array([
                     np.bincount(label['cls'].astype(int).flatten(), minlength=self.data['nc'])
                     for label in TQDM(dataset.labels, total=len(dataset), desc='Statistics')])  # shape(128x80)
