@@ -2,7 +2,7 @@
 
 from ultralytics.engine.model import Model
 from ultralytics.models import yolo  # noqa
-from ultralytics.nn.tasks import ClassificationModel, DetectionModel, PoseModel, SegmentationModel
+from ultralytics.nn.tasks import ClassificationModel, DetectionModel, MultiTaskModel, PoseModel, SegmentationModel
 
 
 class YOLO(Model):
@@ -31,4 +31,9 @@ class YOLO(Model):
                 'model': PoseModel,
                 'trainer': yolo.pose.PoseTrainer,
                 'validator': yolo.pose.PoseValidator,
-                'predictor': yolo.pose.PosePredictor, }, }
+                'predictor': yolo.pose.PosePredictor, },
+            'multi-task': {
+                'model': MultiTaskModel,
+                'trainer': yolo.multi.MultiTaskTrainer,
+                'validator': yolo.multi.MultiTaskValidator,
+                'predictor': yolo.multi.MultiTaskPredictor, }, }
