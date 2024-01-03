@@ -170,6 +170,12 @@ nav:
           - Segment: tasks/segment.md
           - Classify: tasks/classify.md
           - Pose: tasks/pose.md
+      - Guides:
+          - guides/index.md
+      - Models:
+          - models/index.md
+      - Datasets:
+          - datasets/index.md
       - Languages:
           - 🇬🇧&nbsp English: https://docs.ultralytics.com/
           - 🇨🇳&nbsp 简体中文: https://docs.ultralytics.com/zh/
@@ -271,6 +277,8 @@ nav:
           - Objects Counting in Regions: guides/region-counting.md
           - Security Alarm System: guides/security-alarm-system.md
           - Heatmaps: guides/heatmaps.md
+          - Instance Segmentation with Object Tracking: guides/instance-segmentation-and-tracking.md
+          - VisionEye Mapping: guides/vision-eye.md
   - Integrations:
       - integrations/index.md
       - Comet ML: integrations/comet.md
@@ -280,6 +288,7 @@ nav:
       - MLflow: integrations/mlflow.md
       - ClearML: integrations/clearml.md
       - DVC: integrations/dvc.md
+      - Weights & Biases: integrations/weights-biases.md
   - Usage:
       - CLI: usage/cli.md
       - Python: usage/python.md
@@ -408,6 +417,7 @@ nav:
       - solutions:
           - ai_gym: reference/solutions/ai_gym.md
           - object_counter: reference/solutions/object_counter.md
+          - heatmap: reference/solutions/heatmap.md
       - trackers:
           - basetrack: reference/trackers/basetrack.md
           - bot_sort: reference/trackers/bot_sort.md
