@@ -194,7 +194,7 @@ class Results(SimpleClass):
         pil=False,
         img=None,
         im_gpu=None,
-        kpt_radius=5,
+        kpt_radius=1,
         kpt_line=True,
         labels=True,
         boxes=True,
@@ -355,7 +355,8 @@ class Results(SimpleClass):
                     seg = masks[j].xyn[0].copy().reshape(-1)  # reversed mask.xyn, (n,2) to (n*2)
                     line = (c, *seg)
                 if kpts is not None:
-                    kpt = torch.cat((kpts[j].xyn, kpts[j].conf[..., None]), 2) if kpts[j].has_visible else kpts[j].xyn
+                    # kpt = torch.cat((kpts[j].xyn, kpts[j].conf[..., None]), 2) if kpts[j].has_visible else kpts[j].xyn
+                    kpt = kpts[j].xyn
                     line += (*kpt.reshape(-1).tolist(),)
                 line += (conf,) * save_conf + (() if id is None else (id,))
                 texts.append(("%g " * len(line)).rstrip() % line)

@@ -14,7 +14,34 @@ from .conv import Conv
 from .transformer import MLP, DeformableTransformerDecoder, DeformableTransformerDecoderLayer
 from .utils import bias_init_with_prob, linear_init
 
+
+from torch.hub import load
+import torchvision.models as models
+
 __all__ = "Detect", "Segment", "Pose", "Classify", "OBB", "RTDETRDecoder"
+
+dino_backbones = {
+    'dinov2_s':{
+        'name':'dinov2_vits14',
+        'embedding_size':384,
+        'patch_size':14
+    },
+    'dinov2_b':{
+        'name':'dinov2_vitb14',
+        'embedding_size':768,
+        'patch_size':14
+    },
+    'dinov2_l':{
+        'name':'dinov2_vitl14',
+        'embedding_size':1024,
+        'patch_size':14
+    },
+    'dinov2_g':{
+        'name':'dinov2_vitg14',
+        'embedding_size':1536,
+        'patch_size':14
+    },
+}
 
 
 class Detect(nn.Module):
@@ -152,6 +179,14 @@ class Pose(Detect):
         super().__init__(nc, ch)
         self.kpt_shape = kpt_shape  # number of keypoints, number of dims (2 for x,y or 3 for x,y,visible)
         self.nk = kpt_shape[0] * kpt_shape[1]  # number of keypoints total
+        # https://huggingface.co/docs/transformers/main/en/model_doc/dinov2
+        # self.backbones = dino_backbones
+        # self.backbone = load('facebookresearch/dinov2', self.backbones['dinov2_s']['name'])
+        # self.backbone.eval()
+        # self.num_classes =  num_classes # add a class for background if needed
+        # self.embedding_size = self.backbones[backbone]['embedding_size']
+        # self.patch_size = self.backbones[backbone]['patch_size']
+        # self.head = self.heads[head](self.embedding_size,self.num_classes)
 
         c4 = max(ch[0] // 4, self.nk)
         self.cv4 = nn.ModuleList(nn.Sequential(Conv(x, c4, 3), Conv(c4, c4, 3), nn.Conv2d(c4, self.nk, 1)) for x in ch)
@@ -161,6 +196,15 @@ class Pose(Detect):
         bs = x[0].shape[0]  # batch size
         kpt = torch.cat([self.cv4[i](x[i]).view(bs, self.nk, -1) for i in range(self.nl)], -1)  # (bs, 17*3, h*w)
         x = Detect.forward(self, x)
+        # x = self.backbone(x)
+        # batch_size = x.shape[0]
+        # mask_dim = (x.shape[2] / self.patch_size, x.shape[3] / self.patch_size) 
+        # with torch.no_grad():
+        #     x = self.backbone.forward_features(x.cuda())
+        #     x = x['x_norm_patchtokens']
+        #     x = x.permute(0,2,1)
+        #     x = x.reshape(batch_size,self.embedding_size,int(mask_dim[0]),int(mask_dim[1]))
+        # x = self.head(x)
         if self.training:
             return x, kpt
         pred_kpt = self.kpts_decode(bs, kpt)

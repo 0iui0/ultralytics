@@ -145,6 +145,24 @@ class BaseTrainer:
 
         # Callbacks
         self.callbacks = _callbacks or callbacks.get_default_callbacks()
+
+        self.dfea_loss = 0                           # feature distill loss
+        self.dlogit_loss = 0                         # logit distill loss
+        self.loss_t = 0                              # teacher model distill online loss
+        self.distill_loss =None
+        self.model_t = overrides.get("model_t", None)
+        self.distill_feat_type = "cwd"               # "cwd","mgd","mimic"
+        self.distill_online = True                   # False or True
+        self.logit_loss =  True                      # False or True
+        
+        #self.distill_layers =  [6,8,12,15,18,21]      # distill layers
+        self.distill_layers = [2,4,6,8,12,15,18,21]
+        # self.distill_layers = [15,18,21]
+        # self.model_t： 获取蒸馏训练的教师模型，如果在训练模型时，没传入model_t, 则不会进行蒸馏训练，只进行一般的模型训练
+        # self.distill_feat_type: 设置feature - based蒸馏的类型，支持"cwd", "mgd", "mimic", 任意一种
+        # self.distill_online: 设置是否使用在线蒸馏, 默认为False即离线蒸馏，你也可以设置为True
+        # self.logit_loss: 设置是否使用logit蒸馏
+        # self.distill_layers: 设置特征蒸馏的层数，可根据需要选择需要蒸馏的特征层        
         if RANK in {-1, 0}:
             callbacks.add_integration_callbacks(self)
 
@@ -293,6 +311,8 @@ class BaseTrainer:
         iterations = math.ceil(len(self.train_loader.dataset) / max(self.batch_size, self.args.nbs)) * self.epochs
         self.optimizer = self.build_optimizer(
             model=self.model,
+            model_t=self.model_t,
+            distill_loss=self.distill_loss,
             name=self.args.optimizer,
             lr=self.args.lr0,
             momentum=self.args.momentum,
@@ -700,7 +720,7 @@ class BaseTrainer:
             LOGGER.info("Closing dataloader mosaic")
             self.train_loader.dataset.close_mosaic(hyp=self.args)
 
-    def build_optimizer(self, model, name="auto", lr=0.001, momentum=0.9, decay=1e-5, iterations=1e5):
+    def build_optimizer(self, model, model_t, distill_loss, distill_online=True, name="auto", lr=0.001, momentum=0.9, decay=1e-5, iterations=1e5):
         """
         Constructs an optimizer for the given model, based on the specified optimizer name, learning rate, momentum,
         weight decay, and number of iterations.
@@ -741,6 +761,28 @@ class BaseTrainer:
                     g[1].append(param)
                 else:  # weight (with decay)
                     g[0].append(param)
+
+
+        if model_t is not None and distill_online:
+            for v in model_t.modules():
+                # print(v)
+                if hasattr(v, 'bias') and isinstance(v.bias, nn.Parameter):  # bias (no decay)
+                    g[2].append(v.bias)
+                if isinstance(v, bn):  # weight (no decay)
+                    g[1].append(v.weight)
+                elif hasattr(v, 'weight') and isinstance(v.weight, nn.Parameter):  # weight (with decay)
+                    g[0].append(v.weight)
+ 
+        
+        if model_t is not None and distill_loss is not None:
+            for k, v in distill_loss.named_modules():
+                # print(v)
+                if hasattr(v, 'bias') and isinstance(v.bias, nn.Parameter):  # bias (no decay)
+                    g[2].append(v.bias)
+                if isinstance(v, bn) or 'bn' in k:  # weight (no decay)
+                    g[1].append(v.weight)
+                elif hasattr(v, 'weight') and isinstance(v.weight, nn.Parameter):  # weight (with decay)
+                    g[0].append(v.weight)
 
         if name in {"Adam", "Adamax", "AdamW", "NAdam", "RAdam"}:
             optimizer = getattr(optim, name, optim.Adam)(g[2], lr=lr, betas=(momentum, 0.999), weight_decay=0.0)

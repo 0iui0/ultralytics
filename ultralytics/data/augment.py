@@ -553,6 +553,71 @@ class RandomPerspective:
         visible[out_mask] = 0
         return np.concatenate([xy, visible], axis=-1).reshape(n, nkpt, 3)
 
+    def add_noise_around_keypoints(self, image, keypoints, noise_std=0.1):
+        """
+        Add Gaussian noise around keypoints in the image.
+
+        Args:
+            image (ndarray): The image to which noise will be added.
+            keypoints (ndarray): Keypoints in the format [N, 17, 3], where the last dimension is (x, y, visibility).
+            noise_std (float): Standard deviation of the Gaussian noise.
+
+        Returns:
+            ndarray: The image with added noise around keypoints.
+        """
+        image_area = image.shape[0] * image.shape[1]
+        for kp in keypoints:
+            x_coords = kp[:, 0]
+            y_coords = kp[:, 1]
+            bbox_xmin = int(np.min(x_coords))
+            bbox_ymin = int(np.min(y_coords))
+            bbox_xmax = int(np.max(x_coords))
+            bbox_ymax = int(np.max(y_coords))
+            
+            # Calculate the area of the bounding box
+            bbox_area = (bbox_xmax - bbox_xmin) * (bbox_ymax - bbox_ymin)
+            # Calculate the area rate of the bounding box relative to the image
+            area_rate = bbox_area / image_area            
+            for single_kp in kp:
+                # Randomly skip processing this keypoint with a certain probability
+                if random.random() > 0.5 or area_rate < 0.15:  # 50% chance to skip
+                    continue
+                visibility = single_kp[2]
+                if visibility > 0:  # Check if the keypoint is visible
+                    x, y = single_kp[:2].astype(int)
+                    size_xmin = np.random.randint(4,13)
+                    size_xmax = np.random.randint(4,13)
+                    size_ymin = np.random.randint(2,10)
+                    size_ymax = np.random.randint(2,10)
+                    x_min, x_max = max(0, x - size_xmin), min(image.shape[1], x + size_xmax)
+                    y_min, y_max = max(0, y - size_ymin), min(image.shape[0], y + size_ymax)
+                    
+                    # Select a random patch from the image
+                    patch_height, patch_width = y_max - y_min, x_max - x_min
+                    random_y = np.random.randint(0, image.shape[0] - patch_height)
+                    random_x = np.random.randint(0, image.shape[1] - patch_width)
+                    patch = image[random_y:random_y + patch_height, random_x:random_x + patch_width]
+
+                    # Blend the patch with the surrounding area
+                    if x_min > 0:
+                        # Squeeze the dimensions to match the shape of the patch column
+                        image_slice = image[y_min:y_max, x_min-1:x_min].squeeze(axis=1)
+                        patch[:, 0, :] = (patch[:, 0, :] + image_slice) / 2
+                    if x_max < image.shape[1]:
+                        image_slice = image[y_min:y_max, x_max:x_max+1].squeeze(axis=1)
+                        patch[:, -1, :] = (patch[:, -1, :] + image_slice) / 2
+                    if y_min > 0:
+                        image_slice = image[y_min-1:y_min, x_min:x_max].squeeze(axis=0)
+                        patch[0, :, :] = (patch[0, :, :] + image_slice) / 2
+                    if y_max < image.shape[0]:
+                        image_slice = image[y_max:y_max+1, x_min:x_max].squeeze(axis=0)
+                        patch[-1, :, :] = (patch[-1, :, :] + image_slice) / 2
+                    # Weighted add the random patch to the image
+                    # Define the weight for blending
+                    weight = 0.8  # You can adjust this value as needed
+                    image[y_min:y_max, x_min:x_max] = (1 - weight) * image[y_min:y_max, x_min:x_max] + weight * patch
+        return image
+
     def __call__(self, labels):
         """
         Affine images and targets.
@@ -570,6 +635,10 @@ class RandomPerspective:
         # Make sure the coord formats are right
         instances.convert_bbox(format="xyxy")
         instances.denormalize(*img.shape[:2][::-1])
+
+        if instances.keypoints is not None:
+            # Add noise around keypoints
+            img = self.add_noise_around_keypoints(img, instances.keypoints)
 
         border = labels.pop("mosaic_border", self.border)
         self.size = img.shape[1] + border[1] * 2, img.shape[0] + border[0] * 2  # w, h
@@ -926,13 +995,13 @@ class Albumentations:
 
             # Transforms
             T = [
-                A.Blur(p=0.01),
-                A.MedianBlur(p=0.01),
-                A.ToGray(p=0.01),
-                A.CLAHE(p=0.01),
-                A.RandomBrightnessContrast(p=0.0),
-                A.RandomGamma(p=0.0),
-                A.ImageCompression(quality_lower=75, p=0.0),
+                A.Blur(p=0.1),
+                A.MedianBlur(p=0.1),
+                A.ToGray(p=0.1),
+                A.CLAHE(p=0.1),
+                A.RandomBrightnessContrast(p=0.1),
+                A.RandomGamma(p=0.1),
+                A.ImageCompression(quality_lower=75, p=0.1),
             ]
 
             # Compose transforms
